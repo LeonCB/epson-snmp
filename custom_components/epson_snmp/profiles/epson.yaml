@@ -1,0 +1,64 @@
+schema_version: 1
+
+profile:
+  id: epson
+  name: Epson - Totaal aantal afgedrukte pagina's
+  priority: 50
+
+detection:
+  probe:
+    - key: sysObjectID
+      oid: 1.3.6.1.2.1.1.2.0
+      kind: oid
+      required: true
+
+    - key: sysDescr
+      oid: 1.3.6.1.2.1.1.1.0
+      kind: str
+
+    - key: prtGeneralPrinterName
+      oid: 1.3.6.1.2.1.43.5.1.1.16.1
+      kind: str
+
+  scoring:
+    threshold: 80
+    rules:
+      # Epson's SNMP-fabrikantsprefix (1.3.6.1.4.1.1248) — matcht elke Epson-
+      # printer die Printer-MIB beantwoordt, niet alleen één specifiek model.
+      - name: sysObjectID is Epson-fabrikant
+        when:
+          key: sysObjectID
+          op: contains_ci
+          value: "1.3.6.1.4.1.1248."
+        score: 100
+        required: true
+
+      - name: naam bevat epson
+        when:
+          key: prtGeneralPrinterName
+          op: contains_ci
+          value: "epson"
+        score: 25
+
+sources:
+  # Printer-MIB: prtMarkerLifeCount (totaal aantal afgedrukte pagina's, sinds ingebruikname)
+  pagecount_a:
+    oid: 1.3.6.1.2.1.43.10.2.1.4.1.1
+    kind: int
+
+  # Alleen voor de apparaatkaart (merk/type) in Home Assistant — geen eigen sensor
+  model:
+    oid: 1.3.6.1.2.1.43.5.1.1.16.1
+    kind: str
+
+supplies:
+  enabled: false
+
+sensors:
+  - key: pagecount_a
+    name_suffix: Totaal Aantal Afgedrukte Pagina's
+    source_key: pagecount_a
+    kind: int
+    state_class: total_increasing
+    unit: ""
+    icon: mdi:file-document-outline

@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Epson - Totaal aantal afgedrukte pagina's",
+        "description": "Houd het totaal aantal afgedrukte pagina's van een Epson-printer bij via SNMP.",
+        "data": {
+          "host": "Host",
+          "name": "Naam",
+          "community": "Community",
+          "version": "SNMP-versie",
+          "scan_interval": "Scan-interval (seconden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Verbinden mislukt",
+      "unknown": "Onverwachte fout"
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "epson_snmp",
+  "name": "Epson - Totaal aantal afgedrukte pagina's",
+  "codeowners": ["@LeonCB"],
+  "config_flow": false,
+  "documentation": "https://github.com/LeonCB/epson-snmp",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/LeonCB/epson-snmp/issues",
+  "requirements": ["pysnmp==7.1.22"],
+  "version": "2026.8.1"
+}
