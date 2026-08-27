@@ -145,11 +145,11 @@ async def load_profile(hass: HomeAssistant, profile_id: str) -> ParsedProfile:
       2) custom_components/epson_snmp/profiles/<id>.yaml
     """
     od = _override_dir(hass) / f"{profile_id}.yaml"
-    if od.exists():
+    if await hass.async_add_executor_job(od.exists):
         return parse_profile(await _load_yaml_file(hass, od))
 
     ed = _embedded_dir() / f"{profile_id}.yaml"
-    if ed.exists():
+    if await hass.async_add_executor_job(ed.exists):
         return parse_profile(await _load_yaml_file(hass, ed))
 
     raise ValueError(f"Profiel niet gevonden: {profile_id}")
@@ -170,7 +170,8 @@ async def resolve_profile_id_auto(
     - Valt terug op PROFILE_GENERIC als geen enkele kandidaat de drempel haalt.
     """
     candidates: list[ParsedProfile] = []
-    for pid in list_profile_ids(hass):
+    profile_ids = await hass.async_add_executor_job(list_profile_ids, hass)
+    for pid in profile_ids:
         if pid == PROFILE_AUTO:
             continue
         try:

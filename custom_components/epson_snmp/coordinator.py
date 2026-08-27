@@ -48,7 +48,7 @@ class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._mp_model = mp_model
         self._profile_id = profile_id
         self._profile = None  # ParsedProfile, lazy geladen
-        self._engine = SnmpEngine()  # één keer aangemaakt, hergebruikt voor elke SNMP-call
+        self._engine = None  # SnmpEngine, lazy aangemaakt (blokkerende call, dus buiten de event loop)
 
     async def async_get_profile(self):
         """
@@ -61,6 +61,9 @@ class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self._profile
 
     async def _snmp_get_batch(self, oids: list[str]) -> list[Any]:
+        if self._engine is None:
+            self._engine = await self.hass.async_add_executor_job(SnmpEngine)
+
         target = await UdpTransportTarget.create((self._host, 161), timeout=2, retries=1)
 
         err_ind, err_stat, _, var_binds = await get_cmd(
