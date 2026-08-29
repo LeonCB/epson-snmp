@@ -21,7 +21,7 @@ Epson SNMP integratie – entrypoints voor Home Assistant.
 
 Deze module regelt de levenscyclus van de config entry:
 - async_setup_entry: initialiseert de coordinator en zet de platforms op.
-- async_unload_entry: haalt platforms weg en ruimt bewaarde state op.
+- async_unload_entry: haalt platforms weg en verwijdert de coordinator.
 
 Er mag geen netwerk-I/O rechtstreeks in de event loop draaien; de coordinator
 handelt SNMP-polling veilig af buiten de loop.
@@ -73,24 +73,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Verwijder een config entry en ruim runtime-listeners op."""
+    """Verwijder een config entry en ruim de coordinator op."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Coordinator verwijderen
         hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
-
-        # Runtime-listeners/state opruimen (supplies-detectie)
-        runtime_key = f"{DOMAIN}_runtime"
-        runtime = hass.data.get(runtime_key, {})
-        state = runtime.pop(entry.entry_id, None)
-        if state:
-            unsub = state.get("unsub")
-            if callable(unsub):
-                unsub()
-
-        # optioneel: als runtime leeg is geworden, mag de sleutel weg
-        if runtime_key in hass.data and not hass.data[runtime_key]:
-            hass.data.pop(runtime_key, None)
 
     return unload_ok

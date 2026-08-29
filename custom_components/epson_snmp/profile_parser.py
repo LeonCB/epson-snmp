@@ -22,15 +22,6 @@ from typing import Any
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
 
-_DEVICE_CLASS = {
-    "duration": SensorDeviceClass.DURATION,
-}
-
-_STATE_CLASS = {
-    "measurement": SensorStateClass.MEASUREMENT,
-    "total_increasing": SensorStateClass.TOTAL_INCREASING,
-}
-
 _ALLOWED_KINDS = {
     "int",
     "str",
@@ -75,12 +66,31 @@ class ParsedProfile:
     oids: dict[str, str]
     sensors: list[SensorDef]
     detection: dict[str, Any] | None
-    supplies: dict[str, Any] | None
 
 
 def _resolve_oid_value(v: Any) -> str:
     """Normaliseer een ruwe YAML-waarde naar een schone OID-string."""
     return str(v).strip()
+
+
+def _resolve_device_class(value: str | None) -> SensorDeviceClass | None:
+    """Vertaal een YAML device_class-string naar het HA-enum, of raise bij een onbekende waarde."""
+    if not value:
+        return None
+    try:
+        return SensorDeviceClass(value)
+    except ValueError as err:
+        raise ValueError(f"Ongeldige device_class: {value}") from err
+
+
+def _resolve_state_class(value: str | None) -> SensorStateClass | None:
+    """Vertaal een YAML state_class-string naar het HA-enum, of raise bij een onbekende waarde."""
+    if not value:
+        return None
+    try:
+        return SensorStateClass(value)
+    except ValueError as err:
+        raise ValueError(f"Ongeldige state_class: {value}") from err
 
 
 def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
@@ -92,7 +102,6 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
     - oids of sources: mapping met OID-strings
     - sensors: lijst met entity-mappings
     - detection: optionele auto-detectiesectie
-    - supplies: optionele supplies-sectie (inkt/toner-probes)
 
     Raises:
         ValueError: als verplichte velden ontbreken of ongeldig zijn.
@@ -132,8 +141,13 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
         if kind not in _ALLOWED_KINDS:
             raise ValueError(f"Ongeldige kind: {kind}")
 
-        dc = s.get("device_class")
-        sc = s.get("state_class")
+        numerator = s.get("numerator")
+        denominator = s.get("denominator")
+        if kind == "ratio_percent" and not (numerator and denominator):
+            raise ValueError(
+                f"Sensor '{s.get('key')}' met kind=ratio_percent vereist zowel "
+                "numerator als denominator"
+            )
 
         sensors.append(
             SensorDef(
@@ -144,17 +158,16 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
                 oid=s.get("oid"),
                 icon=s.get("icon"),
                 unit=s.get("unit"),
-                device_class=_DEVICE_CLASS.get(dc) if dc else None,
-                state_class=_STATE_CLASS.get(sc) if sc else None,
+                device_class=_resolve_device_class(s.get("device_class")),
+                state_class=_resolve_state_class(s.get("state_class")),
                 map=s.get("map"),
                 default=s.get("default"),
-                numerator=s.get("numerator"),
-                denominator=s.get("denominator"),
+                numerator=numerator,
+                denominator=denominator,
             )
         )
 
     detection = raw.get("detection")
-    supplies = raw.get("supplies")
 
     return ParsedProfile(
         meta=ProfileMeta(
@@ -166,5 +179,4 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
         oids=oids,
         sensors=sensors,
         detection=detection,
-        supplies=supplies,
     )

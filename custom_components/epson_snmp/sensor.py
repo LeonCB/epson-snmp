@@ -5,11 +5,6 @@ Sensor-platform voor de Epson SNMP-integratie
 (totaal aantal afgedrukte pagina's).
 
 - EpsonYamlSensor: sensors gedefinieerd door het actieve YAML-profiel.
-- EpsonYamlSupplySensor: supply-sensors gevonden via SNMP (inkt/toner).
-
-Supply-entities worden aangemaakt:
-1) Meteen vanuit coordinator.data (beschikbaar na first_refresh),
-2) En later via een coordinator-listener als er nieuwe supply-indexen bijkomen.
 """
 
 from typing import Any
@@ -24,9 +19,6 @@ from .const import DOMAIN, CONF_HOST, CONF_NAME
 from .coordinator import EpsonSnmpCoordinator
 
 
-_RUNTIME_KEY = f"{DOMAIN}_runtime"
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -38,47 +30,10 @@ async def async_setup_entry(
     coordinator: EpsonSnmpCoordinator = hass.data[DOMAIN][entry.entry_id]
     profile = await coordinator.async_get_profile()
 
-    # 1) Sensors zoals gedefinieerd in het profiel
     entities: list[SensorEntity] = [
         EpsonYamlSensor(coordinator, host=host, name=name, sensor_def=s) for s in profile.sensors
     ]
     async_add_entities(entities, update_before_add=False)
-
-    # Runtime-state (niet mengen met de coordinators in hass.data[DOMAIN])
-    runtime = hass.data.setdefault(_RUNTIME_KEY, {})
-    state = runtime.setdefault(
-        entry.entry_id, {"supplies_added": set(), "unsub": None})
-    supplies_added: set[int] = state["supplies_added"]
-
-    def _add_supplies_from_data() -> None:
-        """Voeg nieuw gevonden supply-entities toe (idempotent)."""
-        supplies = (coordinator.data or {}).get("supplies") or []
-        if not supplies:
-            return
-
-        new_entities: list[SensorEntity] = []
-        for sup in supplies:
-            idx = sup.get("index")
-            if not isinstance(idx, int):
-                continue
-            if idx in supplies_added:
-                continue
-
-            supplies_added.add(idx)
-            new_entities.append(
-                EpsonYamlSupplySensor(
-                    coordinator, host=host, name=name, supply=sup)
-            )
-
-        if new_entities:
-            async_add_entities(new_entities, update_before_add=False)
-
-    # 2) Supplies meteen aanmaken (werkt omdat first_refresh al is geweest)
-    _add_supplies_from_data()
-
-    # 3) Listener aanhouden voor latere updates (robuust als supplies later verschijnen)
-    unsub = coordinator.async_add_listener(_add_supplies_from_data)
-    state["unsub"] = unsub
 
 
 class EpsonBaseEntity(CoordinatorEntity[EpsonSnmpCoordinator]):
@@ -122,6 +77,13 @@ class EpsonYamlSensor(EpsonBaseEntity, SensorEntity):
     @property
     def native_value(self) -> Any:
         data = self.coordinator.data or {}
+
+        # ratio_percent leest twee eigen bronwaarden (numerator/denominator)
+        # in plaats van het gebruikelijke "source"-veld, dus dit moet vóór
+        # de generieke raw/source-check afgehandeld worden.
+        if self._def.kind == "ratio_percent":
+            return self._ratio_percent_value(data)
+
         raw = data.get(self._def.source)
 
         if raw is None:
@@ -144,46 +106,21 @@ class EpsonYamlSensor(EpsonBaseEntity, SensorEntity):
 
         return raw
 
+    def _ratio_percent_value(self, data: dict[str, Any]) -> Any:
+        """Bereken een percentage uit de numerator/denominator-bronwaarden van het profiel."""
+        num_raw = data.get(self._def.numerator)
+        den_raw = data.get(self._def.denominator)
 
-class EpsonYamlSupplySensor(EpsonBaseEntity, SensorEntity):
-    _attr_native_unit_of_measurement = "%"
-    _attr_state_class = None
-
-    def __init__(
-        self,
-        coordinator: EpsonSnmpCoordinator,
-        *,
-        host: str,
-        name: str,
-        supply: dict[str, Any],
-    ) -> None:
-        super().__init__(coordinator, host=host, name=name)
-        self._idx = supply["index"]
-        title = supply.get("color") or supply.get(
-            "desc") or f"Supply {self._idx}"
-        self._attr_name = f"{name} Ink {title}"
-        self._attr_unique_id = f"{DOMAIN}_{host}_supply_{self._idx}"
-
-    @property
-    def native_value(self) -> Any:
-        supplies = (self.coordinator.data or {}).get("supplies") or []
-        cur = next((s for s in supplies if s.get("index") == self._idx), None)
-        if not cur:
-            return None
-
-        level = cur.get("level")
-        maxv = cur.get("max")
-        if level is None or maxv is None:
-            return None
+        if num_raw is None or den_raw is None:
+            return self._def.default
 
         try:
-            level_i = int(level)
-            max_i = int(maxv)
-        except Exception:
-            return None
+            numerator = float(num_raw)
+            denominator = float(den_raw)
+        except (TypeError, ValueError):
+            return self._def.default
 
-        # Printer-MIB: negatieve waarden (bijv. -2) betekenen "onbekend / niet beschikbaar"
-        if level_i < 0 or max_i <= 0:
-            return None
+        if denominator == 0:
+            return self._def.default
 
-        return int(round((level_i / max_i) * 100))
+        return int(round((numerator / denominator) * 100))

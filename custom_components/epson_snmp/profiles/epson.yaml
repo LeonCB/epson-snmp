@@ -51,9 +51,6 @@ sources:
     oid: 1.3.6.1.2.1.43.5.1.1.16.1
     kind: str
 
-supplies:
-  enabled: false
-
 sensors:
   - key: pagecount_a
     name_suffix: Totaal Aantal Afgedrukte Pagina's

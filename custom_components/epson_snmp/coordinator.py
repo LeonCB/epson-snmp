@@ -15,12 +15,34 @@ from pysnmp.hlapi.v3arch.asyncio import (
     UdpTransportTarget,
     get_cmd,
 )
+from pysnmp.smi import view
 
 from .const import PROFILE_AUTO
 from .profile_loader import load_profile, resolve_profile_id_auto
 
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _create_snmp_engine() -> SnmpEngine:
+    """Maak een SnmpEngine en laad de MIB's meteen van schijf.
+
+    pysnmp laadt MIB-modules (zoals SNMPv2-MIB) lazy bij de eerste
+    get_cmd()-aanroep met blokkerende os.listdir()/open()-calls. Als dat
+    binnen de coroutine gebeurt, blokkeert het Home Assistant's event
+    loop ("Detected blocking call to listdir/open"). Door de MIB's hier
+    alvast in te laden - deze functie wordt altijd via
+    hass.async_add_executor_job aangeroepen - gebeurt die schijf-I/O in
+    een aparte thread, net zoals HA's eigen snmp-integratie het doet
+    (zie home-assistant/core PR #118521).
+    """
+    engine = SnmpEngine()
+    mib_view_controller = view.MibViewController(
+        engine.message_dispatcher.mib_instrum_controller.get_mib_builder()
+    )
+    engine.cache["mibViewController"] = mib_view_controller
+    mib_view_controller.mibBuilder.load_modules()
+    return engine
 
 
 class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -62,7 +84,7 @@ class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _snmp_get_batch(self, oids: list[str]) -> list[Any]:
         if self._engine is None:
-            self._engine = await self.hass.async_add_executor_job(SnmpEngine)
+            self._engine = await self.hass.async_add_executor_job(_create_snmp_engine)
 
         target = await UdpTransportTarget.create((self._host, 161), timeout=2, retries=1)
 
@@ -113,62 +135,5 @@ class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             fw = data.get("firmware_code_raw")
             if fw:
                 data["firmware"] = fw
-
-        supplies_cfg = self._profile.supplies or {}
-        if supplies_cfg.get("enabled"):
-            out = []
-            probe = supplies_cfg.get("probe") or {}
-            level = supplies_cfg.get("level") or {}
-
-            index_prefix = supplies_cfg.get("index_prefix")
-            if index_prefix is None:
-                index_prefix = probe.get(
-                    "index_prefix") or level.get("index_prefix")
-
-            def _idx_oid(base: str, idx: int) -> str:
-                """Bouw een geïndexeerde OID, met optionele dubbele index."""
-                if index_prefix is None:
-                    return f"{base}.{idx}"
-                return f"{base}.{index_prefix}.{idx}"
-
-            has_color = "color_oid" in probe
-            has_level = "value_oid" in level and "max_oid" in level
-
-            for i in range(1, 9):
-                index_oids = [_idx_oid(probe["desc_oid"], i)]
-                if has_color:
-                    index_oids.append(_idx_oid(probe["color_oid"], i))
-                if has_level:
-                    index_oids.append(_idx_oid(level["value_oid"], i))
-                    index_oids.append(_idx_oid(level["max_oid"], i))
-
-                try:
-                    results = await self._snmp_get_batch(index_oids)
-                except Exception:
-                    break
-
-                desc = results[0]
-                if not desc:
-                    break
-
-                entry = {
-                    "index": i,
-                    "desc": str(desc),
-                    "color": None,
-                    "level": None,
-                    "max": None,
-                }
-
-                pos = 1
-                if has_color:
-                    entry["color"] = str(results[pos])
-                    pos += 1
-                if has_level:
-                    entry["level"] = str(results[pos])
-                    entry["max"] = str(results[pos + 1])
-
-                out.append(entry)
-
-            data["supplies"] = out
 
         return data
