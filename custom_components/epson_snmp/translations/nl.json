@@ -14,8 +14,11 @@
       }
     },
     "error": {
-      "cannot_connect": "Verbinden mislukt",
+      "cannot_connect": "Geen SNMP-antwoord van de printer. Controleer host, community en SNMP-versie.",
       "unknown": "Onverwachte fout"
+    },
+    "abort": {
+      "already_configured": "Deze printer is al ingesteld."
     }
   }
 }

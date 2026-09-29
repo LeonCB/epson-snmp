@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Code ophalen
+        uses: actions/checkout@v5
+
+      - name: Versie uit de tag in manifest.json zetten
+        run: |
+          jq --arg v "$GITHUB_REF_NAME" '.version = $v' custom_components/epson_snmp/manifest.json > manifest.tmp
+          mv manifest.tmp custom_components/epson_snmp/manifest.json
+          cat custom_components/epson_snmp/manifest.json
+
+      - name: Zip maken
+        working-directory: custom_components/epson_snmp
+        run: zip -r "$GITHUB_WORKSPACE/epson_snmp.zip" . -x "__pycache__/*" "*.pyc"
+
+      - name: Zip aan de release hangen
+        run: gh release upload "$GITHUB_REF_NAME" epson_snmp.zip --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}

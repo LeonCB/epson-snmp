@@ -1,5 +1,8 @@
 {
   "name": "Epson - Totaal aantal afgedrukte pagina's",
   "content_in_root": false,
+  "zip_release": true,
+  "filename": "epson_snmp.zip",
+  "hide_default_branch": true,
   "homeassistant": "2024.6.0"
 }

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 YAML-profielen parsen voor de Epson SNMP-integratie
 (totaal aantal afgedrukte pagina's).
@@ -16,11 +14,12 @@ bewaard voor toekomstige uitbreidingen, terwijl de parser strikt en
 voorspelbaar blijft.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
-
 
 _ALLOWED_KINDS = {
     "int",

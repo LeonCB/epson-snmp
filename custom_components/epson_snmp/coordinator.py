@@ -1,3 +1,9 @@
+"""DataUpdateCoordinator voor de Epson SNMP-integratie.
+
+Pollt periodiek alle OID's uit het actieve profiel in één SNMP GET en levert
+de ruwe waarden (als strings) aan de sensor-entities.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -6,43 +12,13 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from pysnmp.hlapi.v3arch.asyncio import (
-    CommunityData,
-    ContextData,
-    ObjectIdentity,
-    ObjectType,
-    SnmpEngine,
-    UdpTransportTarget,
-    get_cmd,
-)
-from pysnmp.smi import view
 
 from .const import PROFILE_AUTO
 from .profile_loader import load_profile, resolve_profile_id_auto
-
+from .profile_parser import ParsedProfile
+from .snmp import SnmpError, async_snmp_get
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _create_snmp_engine() -> SnmpEngine:
-    """Maak een SnmpEngine en laad de MIB's meteen van schijf.
-
-    pysnmp laadt MIB-modules (zoals SNMPv2-MIB) lazy bij de eerste
-    get_cmd()-aanroep met blokkerende os.listdir()/open()-calls. Als dat
-    binnen de coroutine gebeurt, blokkeert het Home Assistant's event
-    loop ("Detected blocking call to listdir/open"). Door de MIB's hier
-    alvast in te laden - deze functie wordt altijd via
-    hass.async_add_executor_job aangeroepen - gebeurt die schijf-I/O in
-    een aparte thread, net zoals HA's eigen snmp-integratie het doet
-    (zie home-assistant/core PR #118521).
-    """
-    engine = SnmpEngine()
-    mib_view_controller = view.MibViewController(
-        engine.message_dispatcher.mib_instrum_controller.get_mib_builder()
-    )
-    engine.cache["mibViewController"] = mib_view_controller
-    mib_view_controller.mibBuilder.load_modules()
-    return engine
 
 
 class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -65,75 +41,45 @@ class EpsonSnmpCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             name=f"{name} Coordinator",
             update_interval=timedelta(seconds=scan_interval_seconds),
         )
-        self._host = host
+        self.host = host
         self._community = community
         self._mp_model = mp_model
         self._profile_id = profile_id
-        self._profile = None  # ParsedProfile, lazy geladen
-        self._engine = None  # SnmpEngine, lazy aangemaakt (blokkerende call, dus buiten de event loop)
+        self.profile: ParsedProfile | None = None
 
-    async def async_get_profile(self):
-        """
-        Publieke accessor voor het actieve ParsedProfile.
-
-        Hiermee hoeven platforms niet rechtstreeks aan coordinator-internals
-        (_ensure_profile/_profile) te komen, terwijl het gedrag gelijk blijft.
-        """
-        await self._ensure_profile()
-        return self._profile
-
-    async def _snmp_get_batch(self, oids: list[str]) -> list[Any]:
-        if self._engine is None:
-            self._engine = await self.hass.async_add_executor_job(_create_snmp_engine)
-
-        target = await UdpTransportTarget.create((self._host, 161), timeout=2, retries=1)
-
-        err_ind, err_stat, _, var_binds = await get_cmd(
-            self._engine,
-            CommunityData(self._community, mpModel=self._mp_model),
-            target,
-            ContextData(),
-            *[ObjectType(ObjectIdentity(oid)) for oid in oids],
-            lookupMib=False,
-        )
-        if err_ind or err_stat:
-            raise UpdateFailed(str(err_ind or err_stat))
-
-        return [v for _, v in var_binds]
-
-    async def _ensure_profile(self) -> None:
-        if self._profile:
-            return
-
+    async def _async_setup(self) -> None:
+        """Bepaal het profiel één keer, vóór de eerste refresh."""
         pid = self._profile_id
         if pid == PROFILE_AUTO:
-            pid = await resolve_profile_id_auto(
-                self.hass,
-                host=self._host,
-                community=self._community,
-                mp_model=self._mp_model,
-            )
-
-        self._profile = await load_profile(self.hass, pid)
+            try:
+                pid = await resolve_profile_id_auto(
+                    self.hass,
+                    host=self.host,
+                    community=self._community,
+                    mp_model=self._mp_model,
+                )
+            except SnmpError as err:
+                raise UpdateFailed(f"{self.host} antwoordt niet op SNMP: {err}") from err
+        _LOGGER.debug("Profiel '%s' gekozen voor %s", pid, self.host)
+        self.profile = await load_profile(self.hass, pid)
 
     async def _async_update_data(self) -> dict[str, Any]:
-        await self._ensure_profile()
+        if self.profile is None:  # HA < 2024.8 roept _async_setup niet zelf aan
+            await self._async_setup()
+        assert self.profile is not None
 
-        if not self._profile.oids:
+        if not self.profile.oids:
             raise UpdateFailed("Profiel heeft geen sources/OID's gedefinieerd")
 
-        data: dict[str, Any] = {}
+        try:
+            by_oid = await async_snmp_get(
+                self.hass,
+                host=self.host,
+                community=self._community,
+                mp_model=self._mp_model,
+                oids=list(dict.fromkeys(self.profile.oids.values())),
+            )
+        except SnmpError as err:
+            raise UpdateFailed(f"SNMP-fout bij {self.host}: {err}") from err
 
-        keys = list(self._profile.oids.keys())
-        oids = list(self._profile.oids.values())
-        values = await self._snmp_get_batch(oids)
-
-        for k, v in zip(keys, values):
-            data[k] = str(v)
-
-        if not data.get("firmware"):
-            fw = data.get("firmware_code_raw")
-            if fw:
-                data["firmware"] = fw
-
-        return data
+        return {key: by_oid.get(oid) for key, oid in self.profile.oids.items()}

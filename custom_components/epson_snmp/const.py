@@ -25,6 +25,12 @@ DEFAULT_NAME = "Epson Printer"
 DEFAULT_COMMUNITY = "public"
 DEFAULT_VERSION = "2c"
 DEFAULT_SCAN_INTERVAL = 30
+MIN_SCAN_INTERVAL = 10
+
+SNMP_VERSIONS = ["1", "2c"]
+
+# sysObjectID: elk SNMP-apparaat beantwoordt deze; gebruikt als verbindingstest
+OID_SYS_OBJECT_ID = "1.3.6.1.2.1.1.2.0"
 
 # Profiel-identifiers
 PROFILE_AUTO = "auto"

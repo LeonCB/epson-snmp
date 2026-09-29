@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Epson - Total printed pages",
+        "description": "Track the total number of printed pages of an Epson printer via SNMP.",
+        "data": {
+          "host": "Host",
+          "name": "Name",
+          "community": "Community",
+          "version": "SNMP version",
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "No SNMP response from the printer. Check host, community and SNMP version.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "This printer is already configured."
+    }
+  }
+}
