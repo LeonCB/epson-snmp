@@ -21,6 +21,10 @@ from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorStateClass
 
+# Bronnen die niet via SNMP komen maar via de webpagina van de printer
+# (zie webconfig.py). Hun waarden heten "<bron>.<veld>", bv. "usage.color".
+WEB_SOURCE_KINDS = {"epson_webconfig"}
+
 _ALLOWED_KINDS = {
     "int",
     "str",
@@ -56,6 +60,8 @@ class SensorDef:
     default: str | None = None
     numerator: str | None = None        # sleutel in oids (verhouding)
     denominator: str | None = None      # sleutel in oids (verhouding)
+    # Alleen aanmaken als de printer bij het opstarten een waarde levert
+    optional: bool = False
 
 
 @dataclass(frozen=True)
@@ -64,6 +70,7 @@ class ParsedProfile:
     meta: ProfileMeta
     oids: dict[str, str]
     sensors: list[SensorDef]
+    web_sources: dict[str, str]  # {bronsleutel: kind}
     detection: dict[str, Any] | None
 
 
@@ -119,8 +126,12 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
     # Achterwaartse compatibiliteit: accepteer zowel legacy "oids" als huidige "sources"
     oids_raw = raw.get("oids") or raw.get("sources") or {}
     oids: dict[str, str] = {}
+    web_sources: dict[str, str] = {}
 
     for k, v in oids_raw.items():
+        if isinstance(v, dict) and str(v.get("kind") or "") in WEB_SOURCE_KINDS:
+            web_sources[str(k)] = str(v["kind"])
+            continue
         if isinstance(v, dict):
             # huidig schema: sources: {key: {oid: "...", kind: "..."}}
             oid_val = str(v.get("oid") or "").strip()
@@ -163,6 +174,7 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
                 default=s.get("default"),
                 numerator=numerator,
                 denominator=denominator,
+                optional=bool(s.get("optional", False)),
             )
         )
 
@@ -177,5 +189,6 @@ def parse_profile(raw: dict[str, Any]) -> ParsedProfile:
         ),
         oids=oids,
         sensors=sensors,
+        web_sources=web_sources,
         detection=detection,
     )

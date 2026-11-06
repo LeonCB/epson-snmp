@@ -46,6 +46,12 @@ sources:
     oid: 1.3.6.1.2.1.43.10.2.1.4.1.1
     kind: int
 
+  # Webpagina van de printer (Status > Verbruik status): zwart-wit, kleur,
+  # 1-zijdig en 2-zijdig. Levert de printer die pagina niet, dan worden de
+  # sensoren hieronder niet aangemaakt.
+  usage:
+    kind: epson_webconfig
+
   # Alleen voor de apparaatkaart (merk/type) in Home Assistant — geen eigen sensor
   model:
     oid: 1.3.6.1.2.1.43.5.1.1.16.1
@@ -59,3 +65,39 @@ sensors:
     state_class: total_increasing
     unit: ""
     icon: mdi:file-document-outline
+
+  - key: pagecount_monochrome
+    name_suffix: Afgedrukte Pagina's Zwart-wit
+    source_key: usage.monochrome
+    kind: int
+    state_class: total_increasing
+    unit: ""
+    icon: mdi:file-document-outline
+    optional: true
+
+  - key: pagecount_color
+    name_suffix: Afgedrukte Pagina's Kleur
+    source_key: usage.color
+    kind: int
+    state_class: total_increasing
+    unit: ""
+    icon: mdi:palette
+    optional: true
+
+  - key: pagecount_simplex
+    name_suffix: Afgedrukte Pagina's 1-zijdig
+    source_key: usage.simplex
+    kind: int
+    state_class: total_increasing
+    unit: ""
+    icon: mdi:file-outline
+    optional: true
+
+  - key: pagecount_duplex
+    name_suffix: Afgedrukte Pagina's 2-zijdig
+    source_key: usage.duplex
+    kind: int
+    state_class: total_increasing
+    unit: ""
+    icon: mdi:file-multiple-outline
+    optional: true

@@ -27,9 +27,13 @@ async def async_setup_entry(
     coordinator = entry.runtime_data
     assert coordinator.profile is not None
     name: str = entry.data[CONF_NAME]
+    data = coordinator.data or {}
     async_add_entities(
         EpsonYamlSensor(coordinator, name=name, sensor_def=s)
         for s in coordinator.profile.sensors
+        # Een optionele sensor die deze printer niet levert, blijft weg
+        # i.p.v. permanent "onbekend" te zijn.
+        if not s.optional or data.get(s.source) is not None
     )
 
 

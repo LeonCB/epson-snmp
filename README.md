@@ -9,7 +9,8 @@ Aangepaste Home Assistant-integratie om het **totaal aantal afgedrukte pagina's*
 ## Functies
 
 - Automatische detectie van Epson-netwerkprinters via SNMP (Printer-MIB)
-- Eén sensor: totaal aantal afgedrukte pagina's (Printer-MIB `prtMarkerLifeCount`).
+- Totaal aantal afgedrukte pagina's (SNMP, Printer-MIB `prtMarkerLifeCount`).
+- Afgedrukte pagina's in zwart-wit, kleur, 1-zijdig en 2-zijdig, van de webpagina van de printer (*Status → Verbruik status*). Deze sensoren verschijnen alleen als je printer die pagina heeft.
 - Verbindingstest bij het instellen; werkt met SNMP v1 en v2c.
 
 ---
